@@ -6,7 +6,7 @@
 import { Event as CommonEvent } from 'vs/base/common/event';
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { IWorkspaceIdentifier, ISingleFolderWorkspaceIdentifier } from 'vs/platform/workspaces/common/workspaces';
-import { URI } from 'vs/base/common/uri';
+import { URI, UriComponents } from 'vs/base/common/uri';
 import { IPath } from 'vs/platform/windows/common/windows';
 
 export const IHistoryMainService = createDecorator<IHistoryMainService>('historyMainService');
@@ -44,7 +44,6 @@ export function isRecentFolder(curr: IRecent): curr is IRecentFolder {
 export function isRecentFile(curr: IRecent): curr is IRecentFile {
 	return !!curr['fileUri'];
 }
-
 
 export interface IHistoryMainService {
 	_serviceBrand: any;

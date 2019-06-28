@@ -28,7 +28,7 @@ import { IStorageService, IWorkspaceStorageChangeEvent, StorageScope, IWillSaveS
 import { IUpdateService, State } from 'vs/platform/update/common/update';
 import { IWindowService, INativeOpenDialogOptions, IEnterWorkspaceResult, IURIToOpen, IMessageBoxResult, IWindowsService, IOpenSettings, IWindowSettings } from 'vs/platform/windows/common/windows';
 import { IWorkspaceIdentifier, ISingleFolderWorkspaceIdentifier, IWorkspaceFolderCreationData, IWorkspacesService } from 'vs/platform/workspaces/common/workspaces';
-import { IRecentlyOpened, IRecent } from 'vs/platform/history/common/history';
+import { IRecentlyOpened, IRecent, isRecentFile, isRecentFolder } from 'vs/platform/history/common/history';
 import { ISerializableCommandAction } from 'vs/platform/actions/common/actions';
 import { IWorkspaceEditingService } from 'vs/workbench/services/workspace/common/workspaceEditing';
 import { ITunnelService } from 'vs/platform/remote/common/tunnel';
@@ -44,7 +44,7 @@ import { ICommentThreadChangedEvent } from 'vs/workbench/contrib/comments/common
 import { CommentingRanges } from 'vs/editor/common/modes';
 import { Range } from 'vs/editor/common/core/range';
 import { isUndefinedOrNull } from 'vs/base/common/types';
-import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
+import { IWorkspaceContextService, WorkbenchState } from 'vs/platform/workspace/common/workspace';
 import { addDisposableListener, EventType } from 'vs/base/browser/dom';
 import { IEditorService, IResourceEditor } from 'vs/workbench/services/editor/common/editorService';
 import { pathsToEditors } from 'vs/workbench/common/editor';
@@ -738,6 +738,8 @@ registerSingleton(IURLService, SimpleURLService);
 
 //#region Window
 
+const RECENTLY_OPENED_KEY = 'recently.opened2';
+
 export class SimpleWindowService extends Disposable implements IWindowService {
 
 	_serviceBrand: any;
@@ -752,7 +754,8 @@ export class SimpleWindowService extends Disposable implements IWindowService {
 	constructor(
 		@IEditorService private readonly editorService: IEditorService,
 		@IFileService private readonly fileService: IFileService,
-		@IConfigurationService private readonly configurationService: IConfigurationService
+		@IConfigurationService private readonly configurationService: IConfigurationService,
+		@IStorageService private readonly storageService: IStorageService
 	) {
 		super();
 
@@ -860,11 +863,18 @@ export class SimpleWindowService extends Disposable implements IWindowService {
 		return Promise.resolve();
 	}
 
-	getRecentlyOpened(): Promise<IRecentlyOpened> {
-		return Promise.resolve({
-			workspaces: [],
-			files: []
-		});
+	async getRecentlyOpened(): Promise<IRecentlyOpened> {
+		const recentlyOpenedRaw = this.storageService.get(RECENTLY_OPENED_KEY, StorageScope.GLOBAL);
+		if (recentlyOpenedRaw) {
+			return JSON.parse(recentlyOpenedRaw);
+		}
+
+		return { workspaces: [], files: [] };
+	}
+
+	async removeFromRecentlyOpened(paths: URI[]): Promise<void> {
+		const recentlyOpened = this.getRecentlyOpened();
+
 	}
 
 	focusWindow(): Promise<void> {
@@ -996,6 +1006,20 @@ export class SimpleWindowsService implements IWindowsService {
 	readonly onWindowUnmaximize: Event<number> = Event.None;
 	readonly onRecentlyOpenedChange: Event<void> = Event.None;
 
+	constructor(
+		@IStorageService private storageService: IStorageService,
+		@IWorkspaceContextService workspaceService: IWorkspaceContextService
+	) {
+		switch (workspaceService.getWorkbenchState()) {
+			case WorkbenchState.FOLDER:
+				this.addRecentlyOpened([{ folderUri: workspaceService.getWorkspace().folders[0].uri }]);
+				break;
+			case WorkbenchState.WORKSPACE:
+				this.addRecentlyOpened([{ workspace: { id: workspaceService.getWorkspace().id, configPath: workspaceService.getWorkspace().configuration! } }]);
+				break;
+		}
+	}
+
 	isFocused(_windowId: number): Promise<boolean> {
 		return Promise.resolve(true);
 	}
@@ -1044,8 +1068,27 @@ export class SimpleWindowsService implements IWindowsService {
 		return Promise.resolve();
 	}
 
-	addRecentlyOpened(recents: IRecent[]): Promise<void> {
-		return Promise.resolve();
+	async addRecentlyOpened(recents: IRecent[]): Promise<void> {
+		const recentlyOpenedRaw = this.storageService.get(RECENTLY_OPENED_KEY, StorageScope.GLOBAL);
+
+		let recentlyOpened: IRecentlyOpened;
+		if (recentlyOpenedRaw) {
+			recentlyOpened = JSON.parse(recentlyOpenedRaw);
+		} else {
+			recentlyOpened = { files: [], workspaces: [] };
+		}
+
+		for (const recent of recents) {
+			if (isRecentFile(recent)) {
+				recentlyOpened.files.push(recent);
+			} else {
+				recentlyOpened.workspaces.push(recent);
+			}
+		}
+
+
+
+		this.storageService.store(RECENTLY_OPENED_KEY, JSON.stringify(recentlyOpened), StorageScope.GLOBAL);
 	}
 
 	removeFromRecentlyOpened(_paths: URI[]): Promise<void> {

@@ -121,6 +121,10 @@ export class WindowService extends Disposable implements IWindowService {
 		return this.windowsService.getRecentlyOpened(this.windowId);
 	}
 
+	removeFromRecentlyOpened(paths: URI[]): Promise<void> {
+		return this.windowsService.removeFromRecentlyOpened(paths);
+	}
+
 	focusWindow(): Promise<void> {
 		return this.windowsService.focusWindow(this.windowId);
 	}
